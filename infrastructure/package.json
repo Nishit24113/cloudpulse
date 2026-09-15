@@ -1,0 +1,33 @@
+{
+  "name": "cloudpulse-infrastructure",
+  "version": "1.0.0",
+  "description": "CloudPulse AWS CDK Infrastructure",
+  "main": "bin/cloudpulse.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy --all",
+    "destroy": "cdk destroy --all"
+  },
+  "keywords": [
+    "cloudpulse",
+    "observability",
+    "monitoring",
+    "aws-cdk"
+  ],
+  "author": "Nishit Patel",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "aws-cdk": "^2.140.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.140.0",
+    "constructs": "^10.3.0"
+  }
+}
