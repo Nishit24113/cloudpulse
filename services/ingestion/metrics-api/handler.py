@@ -10,11 +10,11 @@ from typing import Dict, List, Any
 
 # Initialize AWS clients
 sqs = boto3.client('sqs')
-timestream_write = boto3.client('timestream-write')
+dynamodb = boto3.resource('dynamodb')
 
 METRICS_QUEUE_URL = os.environ['METRICS_QUEUE_URL']
-TIMESTREAM_DATABASE = os.environ['TIMESTREAM_DATABASE']
-TIMESTREAM_TABLE = os.environ['TIMESTREAM_TABLE']
+METRICS_TABLE = os.environ['METRICS_TABLE']
+metrics_table = dynamodb.Table(METRICS_TABLE)
 
 
 def lambda_handler(event, context):
@@ -91,12 +91,12 @@ def lambda_handler(event, context):
 
         print(f"✅ Sent {len(enriched_metrics)} metrics to SQS: {sqs_response['MessageId']}")
 
-        # For demo/testing: Also write directly to Timestream (bypass queue)
+        # For demo/testing: Also write directly to DynamoDB (bypass queue)
         # In production, only queue would be used
         try:
-            write_to_timestream(enriched_metrics)
+            write_to_dynamodb(enriched_metrics)
         except Exception as e:
-            print(f"⚠️  Timestream direct write failed (non-critical): {e}")
+            print(f"⚠️  DynamoDB direct write failed (non-critical): {e}")
 
         return {
             'statusCode': 202,  # Accepted
@@ -140,52 +140,39 @@ def lambda_handler(event, context):
         }
 
 
-def write_to_timestream(metrics: List[Dict[str, Any]]):
+def write_to_dynamodb(metrics: List[Dict[str, Any]]):
     """
-    Write metrics directly to Timestream
+    Write metrics directly to DynamoDB
     (For demo purposes - production would use SQS consumer)
     """
     if not metrics:
         return
 
-    records = []
-
-    for metric in metrics:
-        # Build dimensions from tags
-        dimensions = [
-            {'Name': 'app_id', 'Value': metric['app_id']},
-            {'Name': 'org_id', 'Value': metric['org_id']},
-            {'Name': 'metric_name', 'Value': metric['metric']},
-        ]
-
-        # Add custom tags as dimensions
-        for key, value in metric.get('tags', {}).items():
-            dimensions.append({'Name': key, 'Value': str(value)})
-
-        # Timestream record
-        record = {
-            'Dimensions': dimensions,
-            'MeasureName': 'value',
-            'MeasureValue': str(metric['value']),
-            'MeasureValueType': 'DOUBLE',
-            'Time': str(metric['timestamp']),
-            'TimeUnit': 'MILLISECONDS'
-        }
-        records.append(record)
-
-    # Write in batches (Timestream limit: 100 records per write)
-    batch_size = 100
-    for i in range(0, len(records), batch_size):
-        batch = records[i:i + batch_size]
+    # Write in batches (DynamoDB limit: 25 items per batch)
+    batch_size = 25
+    for i in range(0, len(metrics), batch_size):
+        batch = metrics[i:i + batch_size]
         try:
-            response = timestream_write.write_records(
-                DatabaseName=TIMESTREAM_DATABASE,
-                TableName=TIMESTREAM_TABLE,
-                Records=batch
-            )
-            print(f"✅ Wrote {len(batch)} records to Timestream")
+            with metrics_table.batch_writer() as writer:
+                for metric in batch:
+                    # TTL: 90 days from now
+                    ttl = int(time.time()) + (90 * 24 * 60 * 60)
+
+                    item = {
+                        'metric_app': f"{metric['metric']}#{metric['app_id']}",
+                        'timestamp': metric['timestamp'],
+                        'metric_name': metric['metric'],
+                        'app_id': metric['app_id'],
+                        'org_id': metric['org_id'],
+                        'value': metric['value'],
+                        'tags': json.dumps(metric.get('tags', {})),
+                        'ttl': ttl
+                    }
+                    writer.put_item(Item=item)
+
+            print(f"✅ Wrote {len(batch)} records to DynamoDB")
         except Exception as e:
-            print(f"❌ Timestream batch write failed: {e}")
+            print(f"❌ DynamoDB batch write failed: {e}")
             raise
 
 
@@ -213,8 +200,7 @@ if __name__ == '__main__':
 
     # Mock environment
     os.environ.setdefault('METRICS_QUEUE_URL', 'mock-queue-url')
-    os.environ.setdefault('TIMESTREAM_DATABASE', 'cloudpulse_metrics')
-    os.environ.setdefault('TIMESTREAM_TABLE', 'metrics')
+    os.environ.setdefault('METRICS_TABLE', 'cloudpulse-metrics')
 
     result = lambda_handler(test_event, None)
     print(json.dumps(result, indent=2))
