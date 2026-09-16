@@ -1,6 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as timestream from 'aws-cdk-lib/aws-timestream';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 
@@ -8,9 +7,9 @@ export class StorageStack extends cdk.Stack {
   public readonly metadataTable: dynamodb.Table;
   public readonly logsIndexTable: dynamodb.Table;
   public readonly alertsTable: dynamodb.Table;
+  public readonly metricsTable: dynamodb.Table;
   public readonly logsBucket: s3.Bucket;
-  public readonly timestreamDatabase: timestream.CfnDatabase;
-  public readonly metricsTable: timestream.CfnTable;
+  // Timestream removed - using DynamoDB for metrics (Timestream in maintenance mode)
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -71,24 +70,25 @@ export class StorageStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    // ===== Amazon Timestream (Time-series metrics) =====
+    // ===== DynamoDB Metrics Table (Time-series storage) =====
+    // Replacing Timestream (maintenance mode) with DynamoDB
 
-    this.timestreamDatabase = new timestream.CfnDatabase(this, 'MetricsDatabase', {
-      databaseName: 'cloudpulse_metrics',
+    this.metricsTable = new dynamodb.Table(this, 'MetricsTable', {
+      tableName: 'cloudpulse-metrics',
+      partitionKey: { name: 'metric_app', type: dynamodb.AttributeType.STRING }, // metric_name#app_id
+      sortKey: { name: 'timestamp', type: dynamodb.AttributeType.NUMBER },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl', // Auto-delete old metrics after 90 days
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    this.metricsTable = new timestream.CfnTable(this, 'MetricsTable', {
-      databaseName: this.timestreamDatabase.databaseName!,
-      tableName: 'metrics',
-      retentionProperties: {
-        memoryStoreRetentionPeriodInHours: '24', // 24 hours in memory (fast queries)
-        magneticStoreRetentionPeriodInDays: '90', // 90 days on disk (slower, cheaper)
-      },
-      magneticStoreWriteProperties: {
-        enableMagneticStoreWrites: true,
-      },
+    // GSI for querying by time range across all metrics
+    this.metricsTable.addGlobalSecondaryIndex({
+      indexName: 'TimeIndex',
+      partitionKey: { name: 'org_id', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'timestamp', type: dynamodb.AttributeType.NUMBER },
+      projectionType: dynamodb.ProjectionType.ALL,
     });
-    this.metricsTable.addDependency(this.timestreamDatabase);
 
     // ===== S3 Buckets =====
 
@@ -140,16 +140,10 @@ export class StorageStack extends cdk.Stack {
       exportName: 'CloudPulse-LogsBucket',
     });
 
-    new cdk.CfnOutput(this, 'TimestreamDatabaseName', {
-      value: this.timestreamDatabase.databaseName!,
-      description: 'Timestream Database Name',
-      exportName: 'CloudPulse-TimestreamDatabase',
-    });
-
-    new cdk.CfnOutput(this, 'TimestreamTableName', {
-      value: this.metricsTable.tableName!,
-      description: 'Timestream Metrics Table Name',
-      exportName: 'CloudPulse-TimestreamTable',
+    new cdk.CfnOutput(this, 'MetricsTableName', {
+      value: this.metricsTable.tableName,
+      description: 'DynamoDB Metrics Table Name',
+      exportName: 'CloudPulse-MetricsTable',
     });
   }
 }

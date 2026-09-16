@@ -46,25 +46,13 @@ export class IngestionStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       environment: {
         METRICS_QUEUE_URL: this.metricsQueue.queueUrl,
-        TIMESTREAM_DATABASE: storageStack.timestreamDatabase.databaseName!,
-        TIMESTREAM_TABLE: storageStack.metricsTable.tableName!,
+        METRICS_TABLE: storageStack.metricsTable.tableName,
       },
     });
 
     // Grant permissions
     this.metricsQueue.grantSendMessages(metricsIngestionLambda);
-
-    // Grant Timestream write permissions
-    metricsIngestionLambda.addToRolePolicy(new iam.PolicyStatement({
-      actions: [
-        'timestream:WriteRecords',
-        'timestream:DescribeEndpoints',
-      ],
-      resources: [
-        `arn:aws:timestream:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:database/${storageStack.timestreamDatabase.databaseName}`,
-        `arn:aws:timestream:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:database/${storageStack.timestreamDatabase.databaseName}/table/${storageStack.metricsTable.tableName}`,
-      ],
-    }));
+    storageStack.metricsTable.grantWriteData(metricsIngestionLambda);
 
     // 2. Logs Ingestion Lambda
     const logsIngestionLambda = new lambda.Function(this, 'LogsIngestionLambda', {
@@ -146,7 +134,7 @@ export class IngestionStack extends cdk.Stack {
 
     // ===== SQS Consumer Lambdas (Process messages async) =====
 
-    // Metrics Processor (consumes from SQS, writes to Timestream)
+    // Metrics Processor (consumes from SQS, writes to DynamoDB)
     const metricsProcessorLambda = new lambda.Function(this, 'MetricsProcessorLambda', {
       functionName: 'cloudpulse-metrics-processor',
       runtime: lambda.Runtime.PYTHON_3_12,
@@ -156,22 +144,12 @@ export class IngestionStack extends cdk.Stack {
       memorySize: 1024,
       timeout: cdk.Duration.seconds(300),
       environment: {
-        TIMESTREAM_DATABASE: storageStack.timestreamDatabase.databaseName!,
-        TIMESTREAM_TABLE: storageStack.metricsTable.tableName!,
+        METRICS_TABLE: storageStack.metricsTable.tableName,
       },
     });
 
-    // Grant Timestream write
-    metricsProcessorLambda.addToRolePolicy(new iam.PolicyStatement({
-      actions: [
-        'timestream:WriteRecords',
-        'timestream:DescribeEndpoints',
-      ],
-      resources: [
-        `arn:aws:timestream:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:database/${storageStack.timestreamDatabase.databaseName}`,
-        `arn:aws:timestream:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:database/${storageStack.timestreamDatabase.databaseName}/table/${storageStack.metricsTable.tableName}`,
-      ],
-    }));
+    // Grant DynamoDB write
+    storageStack.metricsTable.grantWriteData(metricsProcessorLambda);
 
     // SQS trigger
     metricsProcessorLambda.addEventSource(new cdk.aws_lambda_event_sources.SqsEventSource(this.metricsQueue, {
