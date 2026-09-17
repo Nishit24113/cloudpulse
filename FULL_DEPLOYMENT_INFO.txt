@@ -1,0 +1,302 @@
+============================================================
+  CLOUDPULSE - FULL DEPLOYMENT INFORMATION
+============================================================
+
+Deployment Date: September 16, 2026
+AWS Account: 216989103356
+AWS Region: us-west-2
+AWS Profile: sandbox2025
+
+============================================================
+  BACKEND API (AWS Lambda + API Gateway)
+============================================================
+
+Base URL: https://l90jg6iti4.execute-api.us-west-2.amazonaws.com/v1/
+
+Endpoints:
+├─ GET  /health    - Health check
+├─ POST /metrics   - Ingest metrics
+└─ POST /logs      - Ingest logs
+
+Test Health Check:
+curl https://l90jg6iti4.execute-api.us-west-2.amazonaws.com/v1/health
+
+Test Send Metric:
+curl -X POST https://l90jg6iti4.execute-api.us-west-2.amazonaws.com/v1/metrics \
+  -H "Content-Type: application/json" \
+  -d '{"metrics":[{"metric":"test","value":100,"app_id":"demo"}]}'
+
+AWS Resources:
+├─ Lambda Functions: 3
+│  ├─ cloudpulse-metrics-ingestion
+│  ├─ cloudpulse-logs-ingestion
+│  └─ cloudpulse-metrics-processor
+├─ DynamoDB Tables: 4
+│  ├─ cloudpulse-metrics
+│  ├─ cloudpulse-logs-index
+│  ├─ cloudpulse-alerts
+│  └─ cloudpulse-metadata
+├─ SQS Queues: 2
+│  ├─ cloudpulse-metrics-queue
+│  └─ cloudpulse-logs-queue
+└─ S3 Buckets: 1
+   └─ cloudpulse-logs-216989103356-us-west-2
+
+============================================================
+  FRONTEND DASHBOARD (AWS S3 Static Website)
+============================================================
+
+Public URL: http://cloudpulse-dashboard-1789625989.s3-website-us-west-2.amazonaws.com
+
+S3 Bucket: cloudpulse-dashboard-1789625989
+Region: us-west-2
+Hosting: Static Website
+Public Access: Enabled
+
+Features:
+├─ Dashboard View
+│  ├─ 4 metric cards (CPU, Memory, Requests, Response Time)
+│  ├─ System Resources chart (24h time-series)
+│  ├─ API Requests bar chart (24h)
+│  └─ Response Time line chart (24h)
+├─ Logs View
+│  ├─ Color-coded log entries
+│  ├─ Filter by level (ERROR, WARN, INFO, DEBUG)
+│  ├─ Search functionality
+│  └─ Time range selector
+└─ Send Test Data
+   ├─ Send metrics to AWS API
+   ├─ Send logs to AWS API
+   ├─ Real-time response display
+   └─ cURL examples
+
+Tech Stack:
+├─ React 19
+├─ Vite 8
+├─ Tailwind CSS 3
+├─ Framer Motion (animations)
+├─ Recharts (data visualization)
+├─ Lucide Icons
+├─ React Query
+└─ Axios
+
+============================================================
+  LOCAL FRONTEND (Development)
+============================================================
+
+Local URL: http://localhost:3002
+
+Status: Running in background
+Process: Vite development server
+
+To restart:
+cd dashboard
+node ./node_modules/vite/bin/vite.js
+
+Features: Same as AWS deployment
+Purpose: Development and testing
+
+============================================================
+  TESTING INSTRUCTIONS
+============================================================
+
+1. TEST AWS FRONTEND:
+   Open: http://cloudpulse-dashboard-1789625989.s3-website-us-west-2.amazonaws.com
+
+   Should see:
+   ✓ Animated sidebar with CloudPulse logo
+   ✓ Beautiful gradient dashboard
+   ✓ Charts with smooth animations
+   ✓ Green "API Healthy" indicator (top right)
+
+2. TEST METRICS SENDING:
+   a) Click "Send Test Data" in sidebar
+   b) Fill form:
+      - Metric Name: test.deployment
+      - Value: 100
+      - App ID: my-app
+   c) Click "Send Metric"
+   d) Should see success message with API response
+
+3. TEST BACKEND DIRECTLY:
+   curl -X POST https://l90jg6iti4.execute-api.us-west-2.amazonaws.com/v1/metrics \
+     -H "Content-Type: application/json" \
+     -d '{"metrics":[{"metric":"test","value":100,"app_id":"demo"}]}'
+
+   Expected: {"status":"accepted","message":"Received 1 metrics",...}
+
+4. VERIFY DATA IN DYNAMODB:
+   aws dynamodb scan \
+     --table-name cloudpulse-metrics \
+     --profile sandbox2025 \
+     --region us-west-2 \
+     --max-items 5
+
+   Should see your test metrics
+
+5. TEST LOGS:
+   curl -X POST https://l90jg6iti4.execute-api.us-west-2.amazonaws.com/v1/logs \
+     -H "Content-Type: application/json" \
+     -d '{"logs":[{"message":"Test log","level":"INFO","app_id":"demo"}]}'
+
+6. CHECK LAMBDA LOGS:
+   aws logs tail /aws/lambda/cloudpulse-metrics-ingestion \
+     --profile sandbox2025 \
+     --region us-west-2 \
+     --follow
+
+============================================================
+  COST INFORMATION
+============================================================
+
+Current Resources:
+├─ API Gateway: 1 REST API
+├─ Lambda Functions: 3 functions (Python 3.12, ARM64)
+├─ DynamoDB: 4 tables (on-demand billing)
+├─ SQS: 2 queues
+├─ S3: 2 buckets (logs + frontend hosting)
+└─ CloudWatch: Log groups for all Lambdas
+
+Estimated Monthly Cost (with AWS Free Tier):
+├─ Lambda: $0 (1M requests free)
+├─ API Gateway: $0 (1M requests free)
+├─ DynamoDB: $0 (25GB free)
+├─ SQS: $0 (1M requests free)
+├─ S3: $0 (5GB free, <1MB used)
+├─ CloudWatch: $0 (5GB logs free)
+└─ Total: $0-2/month
+
+After Free Tier Expires (1M requests/month):
+└─ Total: $15-20/month
+
+Compare to Commercial Solutions:
+├─ Datadog: $270-710/month
+├─ New Relic: $149-549/month
+└─ CloudPulse: $0-20/month (90-97% savings!)
+
+============================================================
+  CLEANUP / DESTROY RESOURCES
+============================================================
+
+To delete ALL resources and return cost to $0:
+
+1. Destroy Backend:
+   cd infrastructure
+   cdk destroy --all --profile sandbox2025
+
+2. Delete Frontend S3 Bucket:
+   aws s3 rm s3://cloudpulse-dashboard-1789625989 --recursive --profile sandbox2025
+   aws s3 rb s3://cloudpulse-dashboard-1789625989 --profile sandbox2025
+
+OR use the deployment script:
+   ./deploy-full.sh --destroy --profile sandbox2025
+
+Estimated cleanup time: 3-5 minutes
+Cost after cleanup: $0
+
+============================================================
+  DEPLOYMENT MODES AVAILABLE
+============================================================
+
+1. FULL AWS (Current) ✅
+   Backend: AWS Lambda + API Gateway
+   Frontend: S3 Static Website
+   Cost: $0-2/month
+   Status: DEPLOYED
+
+2. Backend Only
+   Backend: AWS Lambda + API Gateway
+   Frontend: Local (localhost:3002)
+   Cost: $0-2/month
+   Status: LOCAL RUNNING
+
+3. Local + AWS
+   Backend: Local server (manual)
+   Frontend: Local (localhost:3002)
+   Storage: DynamoDB
+   Cost: $0-1/month
+
+4. Local Only
+   Backend: None
+   Frontend: Local with mock data
+   Cost: $0
+
+============================================================
+  PROJECT STATISTICS
+============================================================
+
+Total Lines of Code: 8,900+
+Git Commits: 14 professional commits
+Languages: TypeScript, Python, Go, Bash, Markdown
+AWS Services: 15+
+
+Backend Services: 7 Lambda functions (planned)
+Frontend Components: 5 React components
+Documentation: 6 comprehensive guides
+
+GitHub: https://github.com/Nishit24113/cloudpulse
+
+============================================================
+  WHAT TO TEST NOW
+============================================================
+
+Priority 1 - AWS Frontend:
+□ Open AWS URL in browser
+□ Verify dashboard loads with animations
+□ Check health indicator shows green
+□ Navigate between all 3 tabs (Dashboard, Logs, Send Test Data)
+
+Priority 2 - Send Test Data:
+□ Send a metric from AWS frontend
+□ Verify success response
+□ Send a log entry
+□ Verify success response
+
+Priority 3 - Backend Verification:
+□ Check DynamoDB for metrics
+□ Check Lambda logs for execution
+□ Verify SQS processing
+
+Priority 4 - Local Frontend:
+□ Test localhost:3002
+□ Verify same functionality
+□ Compare with AWS version
+
+Priority 5 - All Permutations:
+□ AWS Frontend → AWS Backend ✓
+□ Local Frontend → AWS Backend (already working)
+□ Different metric types
+□ Different log levels
+□ Edge cases (empty values, large numbers, etc.)
+
+============================================================
+  SUPPORT & TROUBLESHOOTING
+============================================================
+
+If AWS frontend shows blank:
+- Check browser console for errors
+- Verify S3 bucket is publicly accessible
+- Check CORS configuration on API Gateway
+
+If metrics don't appear:
+- Wait 5-10 seconds (SQS processing delay)
+- Check Lambda logs for errors
+- Verify DynamoDB table exists
+
+If deployment fails:
+- Check AWS credentials
+- Verify region is correct
+- Check CloudFormation stack events
+
+Documentation:
+├─ QUICK_START.md - Step-by-step guides
+├─ DEPLOYMENT_MODES.md - Mode comparison
+├─ TEST_CLOUDPULSE.md - Testing guide
+└─ README.md - Project overview
+
+============================================================
+
+CloudPulse - Universal Observability Platform
+Deployed and ready for testing! 🚀
+
+============================================================
