@@ -93,3 +93,5 @@ Thumbs.db
 *.temp
 tmp/
 temp/
+.bucket-name
+response.json
